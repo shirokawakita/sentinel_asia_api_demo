@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinel Asia EOR Viewer</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        form {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        select, input[type="date"] {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-size: 1em;
+        }
+        button {
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            background-color: #2c3e50;
+            color: #fff;
+            font-size: 1em;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #34495e;
+        }
+        #eorData {
+            margin-top: 20px;
+        }
+        .eor-item {
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            background-color: #fff;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 1.2em;
+            color: #666;
+        }
+        .error {
+            color: #e74c3c;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sentinel Asia EOR Viewer</h1>
+        <form id="searchForm">
+            <select id="countrySelect" required>
+                <option value="">国を選択</option>
+            </select>
+            <input type="date" id="startDate" required>
+            <input type="date" id="endDate">
+            <button type="submit">検索</button>
+        </form>
+        <div id="eorData">
+            <div class="loading">国リストを取得中...</div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://reder-test-o5k8.onrender.com';
+        const countrySelect = document.getElementById('countrySelect');
+        const eorDataDiv = document.getElementById('eorData');
+        const searchForm = document.getElementById('searchForm');
+
+        // 国リスト取得
+        async function fetchCountries() {
+            try {
+                const res = await fetch(`${API_BASE}/get_countries`);
+                if (!res.ok) throw new Error('国リストの取得に失敗しました');
+                const countries = await res.json();
+                countrySelect.innerHTML = '<option value="">国を選択</option>';
+                countries.forEach(c => {
+                    countrySelect.innerHTML += `<option value="${c.iso3}">${c.name} (${c.iso3})</option>`;
+                });
+                eorDataDiv.innerHTML = '';
+            } catch (err) {
+                eorDataDiv.innerHTML = `<div class="error">${err.message}</div>`;
+            }
+        }
+
+        // EORイベント取得
+        async function fetchEvents(countryIso3, startDate, endDate) {
+            eorDataDiv.innerHTML = '<div class="loading">EOR情報を取得中...</div>';
+            try {
+                const params = new URLSearchParams({
+                    countryiso3s: countryIso3,
+                    start_date: startDate.replace(/-/g, ''),
+                });
+                if (endDate) params.append('end_date', endDate.replace(/-/g, ''));
+                const res = await fetch(`${API_BASE}/get_events?${params.toString()}`);
+                if (!res.ok) throw new Error('EOR情報の取得に失敗しました');
+                const events = await res.json();
+                displayEORData(events);
+            } catch (err) {
+                eorDataDiv.innerHTML = `<div class="error">${err.message}</div>`;
+            }
+        }
+
+        // EORデータ表示
+        function displayEORData(events) {
+            if (!events || events.length === 0) {
+                eorDataDiv.innerHTML = '<div class="error">該当するEOR情報がありません</div>';
+                return;
+            }
+            let html = '';
+            events.forEach(ev => {
+                html += `
+                    <div class="eor-item">
+                        <strong>${ev.name || '名称不明'}</strong><br>
+                        <span>発生日: ${ev.occurrence_date || '-'} / 災害種別: ${ev.disaster_type || '-'}</span><br>
+                        <span>国: ${ev.country || '-'} / 要請者: ${ev.requester || '-'}</span><br>
+                        <span>GLIDE番号: ${ev.glide_number || '-'}</span><br>
+                        <a href="${ev.url}" target="_blank">詳細ページ</a>
+                    </div>
+                `;
+            });
+            eorDataDiv.innerHTML = html;
+        }
+
+        // 検索フォーム送信時
+        searchForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            const countryIso3 = countrySelect.value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            if (!countryIso3 || !startDate) {
+                eorDataDiv.innerHTML = '<div class="error">国と開始日を選択してください</div>';
+                return;
+            }
+            fetchEvents(countryIso3, startDate, endDate);
+        });
+
+        // 初期化
+        fetchCountries();
+    </script>
+</body>
+</html> 
+</html> 
