@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentinel Asia EOR Viewer</title>
+    <title>Sentinel Asia EOR GIS Viewer</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
@@ -69,11 +69,60 @@
             text-align: center;
             padding: 20px;
         }
+        .gis-files {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+        .gis-file-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            padding: 8px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .gis-file-item a {
+            margin-left: 10px;
+            color: #2c3e50;
+            text-decoration: none;
+        }
+        .gis-file-item a:hover {
+            text-decoration: underline;
+        }
+        .file-type {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            color: white;
+            background-color: #3498db;
+        }
+        .file-type.kmz { background-color: #e74c3c; }
+        .file-type.zip { background-color: #2ecc71; }
+        .file-type.shp { background-color: #f1c40f; }
+        .download-button {
+            margin-left: 10px;
+            padding: 4px 8px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9em;
+        }
+        .download-button:hover {
+            background-color: #2980b9;
+        }
+        .download-link {
+            flex-grow: 1;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Sentinel Asia EOR Viewer</h1>
+        <h1>Sentinel Asia EOR GIS Viewer</h1>
         <form id="searchForm">
             <select id="countrySelect" required>
                 <option value="">国を選択</option>
@@ -92,6 +141,17 @@
         const countrySelect = document.getElementById('countrySelect');
         const eorDataDiv = document.getElementById('eorData');
         const searchForm = document.getElementById('searchForm');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+
+        // デフォルトの日付を設定
+        function setDefaultDates() {
+            const today = new Date();
+            const defaultStartDate = new Date('2007-01-01');
+            
+            startDateInput.value = defaultStartDate.toISOString().split('T')[0];
+            endDateInput.value = today.toISOString().split('T')[0];
+        }
 
         // 国リスト取得
         async function fetchCountries() {
@@ -135,6 +195,7 @@
             }
             let html = '';
             events.forEach(ev => {
+                const gisFiles = extractGisFiles(ev);
                 html += `
                     <div class="eor-item">
                         <strong>${ev.name || '名称不明'}</strong><br>
@@ -142,10 +203,92 @@
                         <span>国: ${ev.country || '-'} / 要請者: ${ev.requester || '-'}</span><br>
                         <span>GLIDE番号: ${ev.glide_number || '-'}</span><br>
                         <a href="${ev.url}" target="_blank">詳細ページ</a>
+                        ${gisFiles.length > 0 ? `
+                            <div class="gis-files">
+                                <strong>GISデータ:</strong>
+                                ${gisFiles.map(file => `
+                                    <div class="gis-file-item">
+                                        <span class="file-type ${getFileTypeClass(file)}">${getFileType(file)}</span>
+                                        <a href="${file}" target="_blank" download="${getFileName(file)}" class="download-link">
+                                            ${getFileName(file)}
+                                        </a>
+                                        <button onclick="downloadFile('${file}', '${getFileName(file)}')" class="download-button">
+                                            ダウンロード
+                                        </button>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
                     </div>
                 `;
             });
             eorDataDiv.innerHTML = html;
+        }
+
+        // GISファイルの抽出
+        function extractGisFiles(event) {
+            const gisFiles = [];
+            if (event.products) {
+                event.products.forEach(product => {
+                    if (product.url) {
+                        const url = product.url.toLowerCase();
+                        if (url.endsWith('.kmz') || url.endsWith('.zip') || 
+                            url.endsWith('.shp') || url.endsWith('.shx') || 
+                            url.endsWith('.dbf') || url.endsWith('.prj')) {
+                            gisFiles.push(product.url);
+                        }
+                    }
+                });
+            }
+            return gisFiles;
+        }
+
+        // ファイルタイプの取得
+        function getFileType(url) {
+            const ext = url.split('.').pop().toLowerCase();
+            switch(ext) {
+                case 'kmz': return 'KMZ';
+                case 'zip': return 'ZIP';
+                case 'shp': return 'SHP';
+                case 'shx': return 'SHX';
+                case 'dbf': return 'DBF';
+                case 'prj': return 'PRJ';
+                default: return ext.toUpperCase();
+            }
+        }
+
+        // ファイルタイプのクラス名取得
+        function getFileTypeClass(url) {
+            const ext = url.split('.').pop().toLowerCase();
+            if (ext === 'kmz') return 'kmz';
+            if (ext === 'zip') return 'zip';
+            if (['shp', 'shx', 'dbf', 'prj'].includes(ext)) return 'shp';
+            return '';
+        }
+
+        // ファイル名の取得
+        function getFileName(url) {
+            return url.split('/').pop();
+        }
+
+        // ファイルダウンロード処理
+        async function downloadFile(url, filename) {
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('ファイルのダウンロードに失敗しました');
+                
+                const blob = await response.blob();
+                const downloadUrl = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(downloadUrl);
+                document.body.removeChild(a);
+            } catch (error) {
+                alert('ファイルのダウンロードに失敗しました: ' + error.message);
+            }
         }
 
         // 検索フォーム送信時
@@ -162,8 +305,8 @@
         });
 
         // 初期化
+        setDefaultDates();
         fetchCountries();
     </script>
 </body>
-</html> 
 </html> 
